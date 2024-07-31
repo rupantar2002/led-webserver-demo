@@ -8,11 +8,12 @@
 #include <esp_event.h>
 #include "app_led.h"
 #include "app_wifi.h"
+#include "app_server.h"
 
 static const char *TAG = "MAIN";
 
 /**
- * @brief Initialized NVS flash, netif instance and default event loop.
+ * @brief Initialized NVS flash, NETIF instance and default event loop.
  *
  * @return true when success and false in case of faliour.
  */
@@ -111,9 +112,13 @@ void app_wifi_EventCB(app_wifi_eventData_t const *const eventData)
     switch (eventData->event)
     {
     case APP_WIFI_EVENT_AP_STARTED:
-        ESP_LOGI(TAG,"APP_WIFI_EVENT_AP_STARTED");
+        ESP_LOGI(TAG, "APP_WIFI_EVENT_AP_STARTED");
+        app_server_Start();
         break;
-    
+    case APP_WIFI_EVENT_AP_STOPED:
+        ESP_LOGI(TAG, "APP_WIFI_EVENT_AP_STOPED");
+        app_server_Stop();
+        break;
     default:
         break;
     }
