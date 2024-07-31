@@ -3,12 +3,13 @@
 #include <esp_log.h>
 #include <esp_err.h>
 
-
 static const char *TAG = "APP_WIFI";
 
 static wifi_config_t gWifiCfg = {0};
 
 static esp_netif_t *pgNetifAP = NULL;
+
+static esp_netif_ip_info_t gIpInfo = {0};
 
 static char gWifiSsidBuff[APP_WIFI_SSID_LEN + 2] = {0};
 
@@ -187,13 +188,7 @@ app_wifi_staus_t app_wifi_SetIP(esp_netif_ip_info_t *pIpinfo)
         return APP_WIFI_STATUS_ERR;
     }
 
-    if (pgNetifAP)
-    {
-        if (esp_netif_set_ip_info(pgNetifAP, pIpinfo) != ESP_OK)
-        {
-            return APP_WIFI_STATUS_ERR;
-        }
-    }
+    (void)memcpy(&gIpInfo, pIpinfo, sizeof(esp_netif_ip_info_t));
 
     return APP_WIFI_STATUS_OK;
 }
@@ -215,7 +210,7 @@ app_wifi_staus_t app_wifi_Start(wifi_mode_t mode)
 
     if (errCode != ESP_OK)
     {
-        ESP_LOGE(TAG, "WIFI AP CONFIGURATIOn FAILED");
+        ESP_LOGE(TAG, "WIFI AP CONFIGURATION FAILED");
         return APP_WIFI_STATUS_ERR;
     }
 
@@ -230,6 +225,28 @@ app_wifi_staus_t app_wifi_Start(wifi_mode_t mode)
     if (errCode != ESP_OK)
     {
         ESP_LOGE(TAG, "WIFI STARTUP FAILED");
+        return APP_WIFI_STATUS_ERR;
+    }
+
+    // Set Static IP to DHCP server
+    errCode = esp_netif_dhcps_stop(pgNetifAP);
+    if (errCode != ESP_OK)
+    {
+        ESP_LOGE(TAG, "FAILED TO STOP DHCP SERVER");
+        return APP_WIFI_STATUS_ERR;
+    }
+
+    errCode = esp_netif_set_ip_info(pgNetifAP, &gIpInfo);
+    if (errCode != ESP_OK)
+    {
+        ESP_LOGE(TAG, "WIFI AP IP ASSIGNMENT FAILED");
+        return APP_WIFI_STATUS_ERR;
+    }
+
+    errCode = esp_netif_dhcps_start(pgNetifAP);
+    if (errCode != ESP_OK)
+    {
+        ESP_LOGE(TAG, "FAILED TO START DHCP SERVER");
         return APP_WIFI_STATUS_ERR;
     }
 
