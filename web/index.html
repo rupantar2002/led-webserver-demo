@@ -8,9 +8,112 @@
 </head>
 
 <body>
-    <p>Lorem ipsum dolor sit amet consectetur, adipisicing elit. Molestias accusantium, architecto nobis in nisi iusto
-        deserunt voluptates repellat labore, rem dolores culpa, repellendus libero ducimus eius quo numquam sint.
-        Accusamus?</p>
+    <h1>Color Picker</h1>
+    <input type="color" id="colorPicker" title="SET LED COLOR" />
+    <p>Selected Color (RGB): <span id="rgbValue">#000000</span></p>
+    <button id="button">OFF</button>
+    <p>Selected State (ON/OFF)</p>
+    <script>
+
+        const colorPicker = document.getElementById('colorPicker');
+        const rgbValueDisplay = document.getElementById('rgbValue');
+        const button = document.getElementById('button');
+        const ws = new WebSocket(`ws://${window.location.hostname}/ws`);
+        let btnState = false;
+        let socketState = false;
+
+
+        ws.onopen = () => {
+            socketState = true;
+            console.log('WebSocket connected');
+            ws.send("Hello websocket");
+        }
+
+        ws.onmessage = (event) => {
+            console.log(`Received: ${event.data}`);
+        }
+
+        ws.onclose = () => {
+            socketState = false;
+            console.log('WebSocket disconnected');
+        }
+
+        button.onclick = () => {
+
+            // Send Color changing request
+            let json = {
+                type: "ctrl",
+                state: "NULL",
+            }
+
+            if (CheckSocketState()) {
+                if (!btnState) {
+                    btnState = true;
+                    button.innerText = "ON";
+                    json.state = "ON";
+                } else {
+                    button.innerText = "OFF";
+                    btnState = false;
+                    json.state = "OFF";
+                }
+
+                // send responce
+                ws.send(JSON.stringify(json));
+            }
+        }
+
+        // Event listener for color input changes
+        colorPicker.addEventListener('input', (event) => {
+
+
+            if (CheckSocketState() && CheckButtonState()) {
+                const hexColor = event.target.value;
+                const rgbColor = HexToRGB(hexColor);
+                // Display the RGB value
+                rgbValueDisplay.textContent = rgbColor;
+
+                // Send Color changing request
+                let json = {
+                    type: "color",
+                    hex: hexColor,
+                }
+                ws.send(JSON.stringify(json));
+            }
+
+        });
+
+        function HexToRGB(hex) {
+            // Remove the hash at the start if it's there
+            hex = hex.replace(/^#/, '');
+            // Parse r, g, b values
+            let r = parseInt(hex.substring(0, 2), 16);
+            let g = parseInt(hex.substring(2, 4), 16);
+            let b = parseInt(hex.substring(4, 6), 16);
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        function CheckSocketState() {
+
+            if (!socketState) {
+                window.alert("Not Connected");
+                return false;
+            } else
+                return true;
+        }
+
+        function CheckButtonState() {
+
+            if (!btnState) {
+                window.alert("Turn ON The LED First");
+                return false;
+            } else
+                return true;
+        }
+
+
+
+
+    </script>
 </body>
 
 </html>

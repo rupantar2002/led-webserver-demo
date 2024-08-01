@@ -1,4 +1,5 @@
 #include "app_led.h"
+#include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <driver/gpio.h>
 #include <driver/rmt_tx.h>
@@ -197,20 +198,21 @@ app_led_status_t app_led_SetRGB(uint8_t r, uint8_t g, uint8_t b)
 {
     esp_err_t errCode = ESP_OK;
 
-    rmt_transmit_config_t transmitCfg = {0};
-    transmitCfg.loop_count = 0; // no transfer loop
+    (void)memset(&gLedCtx.transmitCfg,'\0',sizeof(gLedCtx.transmitCfg));
+
+    gLedCtx.transmitCfg.loop_count = 0; // no transfer loop
 
     gLedCtx.pixels[0] = g;
     gLedCtx.pixels[1] = r;
     gLedCtx.pixels[2] = b;
 
-    errCode = rmt_transmit(gLedCtx.channel, gLedCtx.encoder, gLedCtx.pixels, sizeof(gLedCtx.pixels), &transmitCfg);
+    errCode = rmt_transmit(gLedCtx.channel, gLedCtx.encoder, gLedCtx.pixels, sizeof(gLedCtx.pixels), &gLedCtx.transmitCfg);
     if (errCode != ESP_OK)
     {
         ESP_LOGE(TAG, "FALED TO REST LED");
         return APP_LED_STATUS_ERR;
     }
-    errCode = rmt_tx_wait_all_done(gLedCtx.channel, pdMS_TO_TICKS(100U));
+    errCode = rmt_tx_wait_all_done(gLedCtx.channel, pdMS_TO_TICKS(200U));
     if (errCode != ESP_OK)
     {
         ESP_LOGE(TAG, "TRANSMISSION TIMEOUT");

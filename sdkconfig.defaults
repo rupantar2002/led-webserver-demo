@@ -1,0 +1,3 @@
+
+# Websocket server enabled
+CONFIG_HTTPD_WS_SUPPORT=y

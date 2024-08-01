@@ -123,3 +123,8 @@ void app_wifi_EventCB(app_wifi_eventData_t const *const eventData)
         break;
     }
 }
+
+void app_server_SocketDataCB(const char *json, size_t len)
+{
+    ESP_LOGI(TAG, "LEN : %d , DATA: \"%s\"", len, json);
+}
