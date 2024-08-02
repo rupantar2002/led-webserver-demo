@@ -12,12 +12,170 @@
 
 static const char *TAG = "MAIN";
 
+enum
+{
+    PACKET_TYPE_NULL = 0,
+    PACKET_TYPE_CTRL,
+    PACKET_TYPE_COLOR,
+    PACKET_TYPE_MAX,
+};
+
+typedef struct
+{
+    uint8_t type;
+    union
+    {
+        struct
+        {
+            uint8_t r;
+            uint8_t g;
+            uint8_t b;
+        } color;
+
+        struct
+        {
+            bool state;
+        } ctrl;
+
+    } data;
+
+} packet_t;
+
+static bool gLedState = false;
+static char gRespBuff[APP_SERVER_WS_PAYLOAD_SIZE + 2] = {0};
+static packet_t gPacket = {0};
+static TaskHandle_t gAppTask = NULL;
+
 /**
  * @brief Initialized NVS flash, NETIF instance and default event loop.
  *
  * @return true when success and false in case of faliour.
  */
 static bool SystemInit(void);
+
+/**
+ * @brief  Convert a hex character to its decimal value
+ *
+ * @param c input charecter
+ * @return int decimal value
+ */
+int HexCharToDec(char c)
+{
+    if (c >= '0' && c <= '9')
+    {
+        return c - '0';
+    }
+    else if (c >= 'a' && c <= 'f')
+    {
+        return 10 + (c - 'a');
+    }
+    else if (c >= 'A' && c <= 'F')
+    {
+        return 10 + (c - 'A');
+    }
+    else
+    {
+        return -1; // Invalid character for hex
+    }
+}
+
+/**
+ * @brief Convert a hex string to an 8-bit integer
+ *
+ * @param hex string representing hex value.
+ * @return uint8_t 8bit  integer value.
+ */
+uint8_t HexToInt(const char *hex)
+{
+    return (HexCharToDec(hex[0]) << 4) + HexCharToDec(hex[1]);
+}
+
+/**
+ * @brief Parse JSON packets and handle them based on type
+ *
+ * @param json_str null terminated json string.
+ */
+
+bool ParseJson(const char *json_str, packet_t *const pkt)
+{
+    if (!json_str && !pkt)
+    {
+        return false;
+    }
+
+    char type[10];
+    char state[10];
+    char hex_color[8];
+
+    // Check for "type" to determine packet structure
+    if (sscanf(json_str, "{\"type\":\"%[^\"]\"", type) == 1)
+    {
+
+        if (strcmp(type, "color") == 0)
+        {
+
+            // Parse color packet
+            if (sscanf(json_str, "{\"type\":\"color\",\"hex\":\"#%[^\"]\"}", hex_color) == 1)
+            {
+
+                pkt->type = PACKET_TYPE_COLOR;
+                pkt->data.color.r = HexToInt(hex_color);     // First two characters
+                pkt->data.color.g = HexToInt(hex_color + 2); // Second two characters
+                pkt->data.color.b = HexToInt(hex_color + 4); // Third two characters
+
+                // Print the results
+                ESP_LOGI(TAG, "Packet Type : %s", type);
+                ESP_LOGI(TAG, "R: %d, G: %d, B: %d", pkt->data.color.r,
+                         pkt->data.color.g,
+                         pkt->data.color.b);
+            }
+            else
+            {
+                ESP_LOGE(TAG, "Error parsing color packet.");
+                return false;
+            }
+        }
+        else if (strcmp(type, "ctrl") == 0)
+        {
+
+            // Parse command packet
+            if (sscanf(json_str, "{\"type\":\"ctrl\",\"state\":\"%[^\"]\"}", state) == 1)
+            {
+
+                pkt->type = PACKET_TYPE_CTRL;
+
+                if (strncmp(state, "ON", sizeof(state)) == 0)
+                {
+                    pkt->data.ctrl.state = true;
+                }
+                else if (strncmp(state, "OFF", sizeof(state)))
+                {
+                    pkt->data.ctrl.state = false;
+                }
+
+                // Print the results
+                ESP_LOGI(TAG, "Packet Type : %s", type);
+                ESP_LOGI(TAG, "State: %s\n", state);
+            }
+            else
+            {
+                ESP_LOGE(TAG, "Error parsing control packet");
+                return false;
+            }
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Unknown packet type");
+            return false;
+        }
+    }
+    else
+    {
+        ESP_LOGE(TAG, "Error reading packet type");
+        return false;
+    }
+    return true;
+}
 
 void app_main(void)
 {
@@ -27,6 +185,9 @@ void app_main(void)
         .ssid = "MY SSID",
         .password = "12345678",
     };
+
+    /* Retrive current task handle for notification purpose */
+    gAppTask = xTaskGetCurrentTaskHandle();
 
     ipInfo.ip.addr = ESP_IP4TOADDR(10, 10, 10, 10);
     ipInfo.gw.addr = ESP_IP4TOADDR(10, 10, 10, 1);
@@ -46,17 +207,38 @@ void app_main(void)
 
     while (1)
     {
-        (void)app_led_Reset();
-        (void)app_led_SetRGB(20, 0, 0);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        (void)app_led_Reset();
-        (void)app_led_SetRGB(0, 20, 0);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        (void)memset(&gPacket, '\0', sizeof(gPacket));
 
-        (void)app_led_Reset();
-        (void)app_led_SetRGB(0, 0, 20);
-        vTaskDelay(pdMS_TO_TICKS(2000));
+        if (ParseJson(gRespBuff, &gPacket))
+        {
+            switch (gPacket.type)
+            {
+            case PACKET_TYPE_CTRL:
+                if (gPacket.data.ctrl.state)
+                {
+                    gLedState = true;
+                }
+                else
+                {
+                    gLedState = false;
+                    (void)app_led_Reset();
+                }
+
+                break;
+            case PACKET_TYPE_COLOR:
+                if (gLedState)
+                {
+                    (void)app_led_SetRGB(gPacket.data.color.r,
+                                         gPacket.data.color.g,
+                                         gPacket.data.color.b);
+                }
+                break;
+            default:
+                break;
+            }
+        }
     }
 }
 
@@ -126,5 +308,11 @@ void app_wifi_EventCB(app_wifi_eventData_t const *const eventData)
 
 void app_server_SocketDataCB(const char *json, size_t len)
 {
-    ESP_LOGI(TAG, "LEN : %d , DATA: \"%s\"", len, json);
+    (void)strncpy(gRespBuff, json, sizeof(gRespBuff));
+
+    if (gAppTask)
+    {
+        // Notify application task about socket data.
+        (void)xTaskNotify(gAppTask, 0, eNoAction);
+    }
 }
